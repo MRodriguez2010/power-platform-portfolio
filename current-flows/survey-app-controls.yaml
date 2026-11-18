@@ -1,0 +1,102 @@
+- lblTitle:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="Post-event feedback"
+      FontWeight: =FontWeight.Semibold
+      Size: =26
+      X: =40
+      Y: =24
+      Width: =560
+      Height: =60
+- lblSubtitle:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="Synthetic interview demo. Each response is processed by Power Automate."
+      Size: =13
+      Color: =RGBA(96, 94, 92, 1)
+      X: =40
+      Y: =84
+      Width: =560
+      Height: =56
+- lblEmail:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="Email"
+      FontWeight: =FontWeight.Semibold
+      X: =40
+      Y: =150
+      Width: =560
+      Height: =40
+- txtEmail:
+    Control: Classic/TextInput@2.3.2
+    Properties:
+      Default: =""
+      HintText: ="name@example.com"
+      X: =40
+      Y: =190
+      Width: =560
+      Height: =60
+- lblName:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="Name"
+      FontWeight: =FontWeight.Semibold
+      X: =40
+      Y: =265
+      Width: =560
+      Height: =40
+- txtName:
+    Control: Classic/TextInput@2.3.2
+    Properties:
+      Default: =""
+      HintText: ="Your name"
+      X: =40
+      Y: =305
+      Width: =560
+      Height: =60
+- lblRating:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="Rating (1 = poor, 5 = excellent)"
+      FontWeight: =FontWeight.Semibold
+      X: =40
+      Y: =380
+      Width: =560
+      Height: =40
+- lblFeedback:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="Feedback"
+      FontWeight: =FontWeight.Semibold
+      X: =40
+      Y: =490
+      Width: =560
+      Height: =40
+- txtFeedback:
+    Control: Classic/TextInput@2.3.2
+    Properties:
+      Default: =""
+      HintText: ="What worked well? What should change?"
+      Mode: =TextMode.MultiLine
+      X: =40
+      Y: =530
+      Width: =560
+      Height: =220
+- btnSubmit:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="Submit feedback"
+      DisplayMode: =If(IsMatch(txtEmail.Text, Match.Email) && !IsBlank(Trim(txtName.Text)) && Rating1.Value >= 1 && !IsBlank(Trim(txtFeedback.Text)), DisplayMode.Edit, DisplayMode.Disabled)
+      X: =40
+      Y: =780
+      Width: =560
+      Height: =70
+- lblResult:
+    Control: Label@2.5.1
+    Properties:
+      Text: =If(IsBlank(varResult), "", "Thank you! Reference " & varResult.responseid & If(varResult.route = "CriticalFeedbackReview", ". Your comment was flagged for reviewer follow-up.", "."))
+      Color: =RGBA(16, 124, 16, 1)
+      X: =40
+      Y: =870
+      Width: =560
+      Height: =120

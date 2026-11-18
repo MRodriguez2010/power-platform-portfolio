@@ -1,0 +1,12 @@
+[submodule "demos/event-survey"]
+	path = demos/event-survey
+	url = https://github.com/MRodriguez2010/power-platform-event-survey-demo
+[submodule "demos/workflow-certification"]
+	path = demos/workflow-certification
+	url = https://github.com/MRodriguez2010/power-platform-workflow-certification-demo
+[submodule "demos/macro-certification"]
+	path = demos/macro-certification
+	url = https://github.com/MRodriguez2010/power-platform-macro-certification-demo
+[submodule "demos/conditional-mail"]
+	path = demos/conditional-mail
+	url = https://github.com/MRodriguez2010/power-platform-conditional-mail-demo

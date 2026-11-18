@@ -1,0 +1,205 @@
+{
+  "New_response_id": {
+    "type": "Compose",
+    "inputs": "@concat('APP-',convertTimeZone(utcNow(),'UTC','Central Standard Time','MMdd-HHmmss'))",
+    "runAfter": {}
+  },
+  "Route": {
+    "type": "Compose",
+    "inputs": "@if(not(isInt(trim(coalesce(triggerBody()?['text_2'],'')))),'InvalidRating',if(or(less(int(trim(triggerBody()?['text_2'])),1),greater(int(trim(triggerBody()?['text_2'])),5)),'InvalidRating',if(or(contains(toLower(coalesce(triggerBody()?['text_3'],'')),'complaint'),contains(toLower(coalesce(triggerBody()?['text_3'],'')),'unsafe'),contains(toLower(coalesce(triggerBody()?['text_3'],'')),'harassment')),'CriticalFeedbackReview','Accepted')))",
+    "runAfter": {
+      "New_response_id": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Save_response": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "Route": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "source": "groups/<SITE_GROUP_ID>",
+        "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+        "file": "surveys.xlsx",
+        "table": "SurveyResponses",
+        "item/ResponseId": "@outputs('New_response_id')",
+        "item/Event": "Demo event",
+        "item/Rating": "@trim(coalesce(triggerBody()?['text_2'],''))",
+        "item/Feedback": "@coalesce(triggerBody()?['text_3'],'')"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "connectionName": "shared_excelonlinebusiness",
+        "operationId": "AddRowV2"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Result": {
+    "type": "Compose",
+    "inputs": {
+      "ResponseId": "@outputs('New_response_id')",
+      "Rating": "@triggerBody()?['text_2']",
+      "Feedback": "@triggerBody()?['text_3']",
+      "Route": "@outputs('Route')",
+      "Source": "Power Apps survey (new practice interface)",
+      "Rule": "Case-insensitive keyword match; human review required"
+    },
+    "runAfter": {
+      "Save_response": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Write_receipt": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "Result": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "dataset": "https://contoso.sharepoint.com/sites/PowerPlatformDemo",
+        "folderPath": "/Shared Documents",
+        "name": "@concat('demo-survey-',outputs('New_response_id'),'.json')",
+        "body": "@string(outputs('Result'))"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "connectionName": "shared_sharepointonline",
+        "operationId": "CreateFile"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Respond_to_app": {
+    "type": "Response",
+    "kind": "PowerApp",
+    "runAfter": {
+      "Write_receipt": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "statusCode": 200,
+      "body": {
+        "responseid": "@outputs('New_response_id')",
+        "route": "@outputs('Route')"
+      },
+      "schema": {
+        "type": "object",
+        "properties": {
+          "responseid": {
+            "title": "responseid",
+            "x-ms-dynamically-added": true,
+            "type": "string"
+          },
+          "route": {
+            "title": "route",
+            "x-ms-dynamically-added": true,
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "Thank_respondent": {
+    "type": "If",
+    "expression": {
+      "not": {
+        "equals": [
+          "@outputs('Route')",
+          "InvalidRating"
+        ]
+      }
+    },
+    "actions": {
+      "Email_thank_you": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": {
+          "parameters": {
+            "emailMessage/To": "demo-inbox@example.com",
+            "emailMessage/Subject": "[DEMO] Thanks for your event feedback, @{triggerBody()?['text_1']}",
+            "emailMessage/Body": "<p><i>Intended recipient: @{triggerBody()?['text']} (respondent).</i></p><p>Hi @{triggerBody()?['text_1']}, thank you for taking the post-event survey.</p><p><b>Reference:</b> @{outputs('New_response_id')}<br><b>Rating:</b> @{triggerBody()?['text_2']} of 5<br><b>Feedback:</b> @{triggerBody()?['text_3']}</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+            "emailMessage/Importance": "Normal"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+            "connectionName": "shared_office365",
+            "operationId": "SendEmailV2"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          },
+          "retryPolicy": {
+            "type": "none"
+          }
+        }
+      }
+    },
+    "else": {
+      "actions": {}
+    },
+    "runAfter": {
+      "Respond_to_app": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Alert_if_critical": {
+    "type": "If",
+    "expression": {
+      "equals": [
+        "@outputs('Route')",
+        "CriticalFeedbackReview"
+      ]
+    },
+    "actions": {
+      "Email_review_alert": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": {
+          "parameters": {
+            "emailMessage/To": "demo-inbox@example.com",
+            "emailMessage/Subject": "[DEMO] Feedback flagged for review - @{outputs('New_response_id')}",
+            "emailMessage/Body": "<p><i>Intended recipient: event feedback reviewer.</i></p><p>A response matched a review keyword (complaint, unsafe, harassment). Keyword matching is rule-based, so a person should read it before acting; for example, \"no complaint\" also matches.</p><p><b>Reference:</b> @{outputs('New_response_id')}<br><b>Rating:</b> @{triggerBody()?['text_2']} of 5<br><b>Feedback:</b> @{triggerBody()?['text_3']}</p><p><b>Respondent:</b> @{triggerBody()?['text_1']} (@{triggerBody()?['text']})</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+            "emailMessage/Importance": "Normal"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+            "connectionName": "shared_office365",
+            "operationId": "SendEmailV2"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          },
+          "retryPolicy": {
+            "type": "none"
+          }
+        }
+      }
+    },
+    "else": {
+      "actions": {}
+    },
+    "runAfter": {
+      "Thank_respondent": [
+        "Succeeded"
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "manual": {
+    "type": "Request",
+    "kind": "Button",
+    "inputs": {
+      "schema": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "reset": {
+            "type": "string",
+            "title": "Type RESET to clear demo send log for E001/E002 first (optional)",
+            "x-ms-content-hint": "TEXT",
+            "x-ms-dynamically-added": true
+          }
+        }
+      }
+    },
+    "runtimeConfiguration": {
+      "concurrency": {
+        "runs": 1
+      }
+    }
+  }
+}

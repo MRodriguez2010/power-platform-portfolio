@@ -1,0 +1,47 @@
+{
+  "manual": {
+    "type": "Request",
+    "kind": "PowerAppV2",
+    "inputs": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Email",
+            "x-ms-content-hint": "TEXT",
+            "x-ms-dynamically-added": true,
+            "description": "Respondent email"
+          },
+          "text_1": {
+            "type": "string",
+            "title": "Name",
+            "x-ms-content-hint": "TEXT",
+            "x-ms-dynamically-added": true,
+            "description": "Respondent name"
+          },
+          "text_2": {
+            "type": "string",
+            "title": "Rating",
+            "x-ms-content-hint": "TEXT",
+            "x-ms-dynamically-added": true,
+            "description": "Rating 1 to 5 (5 is best)"
+          },
+          "text_3": {
+            "type": "string",
+            "title": "Feedback",
+            "x-ms-content-hint": "TEXT",
+            "x-ms-dynamically-added": true,
+            "description": "Open-ended feedback"
+          }
+        },
+        "required": [
+          "text",
+          "text_1",
+          "text_2",
+          "text_3"
+        ]
+      }
+    }
+  }
+}

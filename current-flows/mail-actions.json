@@ -1,0 +1,344 @@
+{
+  "Optional_demo_reset": {
+    "type": "If",
+    "expression": {
+      "equals": [
+        "@toUpper(trim(coalesce(triggerBody()?['reset'],'')))",
+        "RESET"
+      ]
+    },
+    "actions": {
+      "Reset_E001": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": {
+          "parameters": {
+            "source": "groups/<SITE_GROUP_ID>",
+            "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+            "file": "mail.xlsx",
+            "table": "MailContacts",
+            "idColumn": "EmployeeId",
+            "id": "E001",
+            "item/PreviousState": "None",
+            "item/PreviousContacts": 0
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+            "connectionName": "shared_excelonlinebusiness",
+            "operationId": "PatchItem"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          }
+        }
+      },
+      "Reset_E002": {
+        "type": "OpenApiConnection",
+        "runAfter": {
+          "Reset_E001": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "parameters": {
+            "source": "groups/<SITE_GROUP_ID>",
+            "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+            "file": "mail.xlsx",
+            "table": "MailContacts",
+            "idColumn": "EmployeeId",
+            "id": "E002",
+            "item/PreviousState": "None",
+            "item/PreviousContacts": 0
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+            "connectionName": "shared_excelonlinebusiness",
+            "operationId": "PatchItem"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          }
+        }
+      }
+    },
+    "else": {
+      "actions": {}
+    },
+    "runAfter": {}
+  },
+  "Read_dummy_attachment": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "Optional_demo_reset": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "dataset": "https://contoso.sharepoint.com/sites/PowerPlatformDemo",
+        "path": "/Shared Documents/demo-action-guide.txt",
+        "inferContentType": true
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "connectionName": "shared_sharepointonline",
+        "operationId": "GetFileContentByPath"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Read_contacts": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "Read_dummy_attachment": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "source": "groups/<SITE_GROUP_ID>",
+        "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+        "file": "mail.xlsx",
+        "table": "MailContacts",
+        "dateTimeFormat": "ISO 8601"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "connectionName": "shared_excelonlinebusiness",
+        "operationId": "GetItems"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "For_each_contact": {
+    "type": "Foreach",
+    "foreach": "@body('Read_contacts')?['value']",
+    "actions": {
+      "Same_contact": {
+        "type": "Query",
+        "inputs": {
+          "from": "@body('Read_contacts')?['value']",
+          "where": "@equals(item()?['EmployeeId'],items('For_each_contact')?['EmployeeId'])"
+        },
+        "runAfter": {}
+      },
+      "Status": {
+        "type": "Compose",
+        "inputs": "@if(not(equals(length(body('Same_contact')),1)),'DuplicateNeedsReview',if(or(greater(int(items('For_each_contact')?['PreviousContacts']),0),equals(items('For_each_contact')?['PreviousState'],'Sent')),'SuppressedAlreadyContacted',if(equals(items('For_each_contact')?['PreviousState'],'Unknown'),'HoldUncertainOutcome',if(and(equals(toLower(string(items('For_each_contact')?['NeedsAttachment'])),'true'),not(equals(items('For_each_contact')?['Attachment'],'demo-action-guide.txt'))),'MissingAttachment','ReadyToSend'))))",
+        "runAfter": {
+          "Same_contact": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Message": {
+        "type": "Compose",
+        "inputs": {
+          "EmployeeId": "@items('For_each_contact')?['EmployeeId']",
+          "Campaign": "@items('For_each_contact')?['Campaign']",
+          "Name": "@items('For_each_contact')?['Name']",
+          "Branch": "@items('For_each_contact')?['Category']",
+          "Status": "@outputs('Status')",
+          "Attachment": "@if(equals(toLower(string(items('For_each_contact')?['NeedsAttachment'])),'true'),items('For_each_contact')?['Attachment'],'')",
+          "Subject": "@concat('[DEMO] ',items('For_each_contact')?['Category'],' notice for ',items('For_each_contact')?['Name'])",
+          "Body": "@concat('Hello ',items('For_each_contact')?['Name'],'. This is a synthetic ',items('For_each_contact')?['Category'],' notice.')"
+        },
+        "runAfter": {
+          "Status": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Write_audit_receipt": {
+        "type": "OpenApiConnection",
+        "runAfter": {
+          "Message": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "parameters": {
+            "dataset": "https://contoso.sharepoint.com/sites/PowerPlatformDemo",
+            "folderPath": "/Shared Documents",
+            "name": "@concat('demo-mail-',items('For_each_contact')?['Campaign'],'-',items('For_each_contact')?['EmployeeId'],'.json')",
+            "body": "@string(outputs('Message'))"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+            "connectionName": "shared_sharepointonline",
+            "operationId": "CreateFile"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          }
+        }
+      },
+      "Send_if_ready": {
+        "type": "If",
+        "expression": {
+          "equals": [
+            "@outputs('Status')",
+            "ReadyToSend"
+          ]
+        },
+        "actions": {
+          "Send_branch": {
+            "type": "If",
+            "expression": {
+              "equals": [
+                "@equals(toLower(string(items('For_each_contact')?['NeedsAttachment'])),'true')",
+                true
+              ]
+            },
+            "actions": {
+              "Send_with_attachment": {
+                "type": "OpenApiConnection",
+                "runAfter": {},
+                "inputs": {
+                  "parameters": {
+                    "emailMessage/To": "demo-inbox@example.com",
+                    "emailMessage/Subject": "@{outputs('Message')?['Subject']}",
+                    "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_contact')?['Name']} (@{items('For_each_contact')?['EmployeeId']}) - redirected to the demo inbox.</i></p><p>Hello @{items('For_each_contact')?['Name']}, this is a synthetic @{items('For_each_contact')?['Category']} notice from the conditional mail-merge demo.</p><p>Attachment rule: @{if(equals(toLower(string(items('For_each_contact')?['NeedsAttachment'])),'true'),'action guide attached','no attachment needed')}.</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                    "emailMessage/Importance": "Normal",
+                    "emailMessage/Attachments": [
+                      {
+                        "Name": "demo-action-guide.txt",
+                        "ContentBytes": "@{base64(body('Read_dummy_attachment'))}"
+                      }
+                    ]
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "connectionName": "shared_office365",
+                    "operationId": "SendEmailV2"
+                  },
+                  "authentication": {
+                    "type": "Raw",
+                    "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                  },
+                  "retryPolicy": {
+                    "type": "none"
+                  }
+                }
+              }
+            },
+            "else": {
+              "actions": {
+                "Send_without_attachment": {
+                  "type": "OpenApiConnection",
+                  "runAfter": {},
+                  "inputs": {
+                    "parameters": {
+                      "emailMessage/To": "demo-inbox@example.com",
+                      "emailMessage/Subject": "@{outputs('Message')?['Subject']}",
+                      "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_contact')?['Name']} (@{items('For_each_contact')?['EmployeeId']}) - redirected to the demo inbox.</i></p><p>Hello @{items('For_each_contact')?['Name']}, this is a synthetic @{items('For_each_contact')?['Category']} notice from the conditional mail-merge demo.</p><p>Attachment rule: @{if(equals(toLower(string(items('For_each_contact')?['NeedsAttachment'])),'true'),'action guide attached','no attachment needed')}.</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                      "emailMessage/Importance": "Normal"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2"
+                    },
+                    "authentication": {
+                      "type": "Raw",
+                      "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                    },
+                    "retryPolicy": {
+                      "type": "none"
+                    }
+                  }
+                }
+              }
+            },
+            "runAfter": {}
+          },
+          "Log_sent": {
+            "type": "OpenApiConnection",
+            "runAfter": {
+              "Send_branch": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "parameters": {
+                "source": "groups/<SITE_GROUP_ID>",
+                "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+                "file": "mail.xlsx",
+                "table": "MailContacts",
+                "idColumn": "EmployeeId",
+                "id": "@items('For_each_contact')?['EmployeeId']",
+                "item/PreviousState": "Sent",
+                "item/PreviousContacts": "@add(int(items('For_each_contact')?['PreviousContacts']),1)"
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                "connectionName": "shared_excelonlinebusiness",
+                "operationId": "PatchItem"
+              },
+              "authentication": {
+                "type": "Raw",
+                "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+              }
+            }
+          },
+          "Log_uncertain_outcome": {
+            "type": "OpenApiConnection",
+            "runAfter": {
+              "Send_branch": [
+                "Failed",
+                "TimedOut"
+              ]
+            },
+            "inputs": {
+              "parameters": {
+                "source": "groups/<SITE_GROUP_ID>",
+                "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+                "file": "mail.xlsx",
+                "table": "MailContacts",
+                "idColumn": "EmployeeId",
+                "id": "@items('For_each_contact')?['EmployeeId']",
+                "item/PreviousState": "Unknown"
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                "connectionName": "shared_excelonlinebusiness",
+                "operationId": "PatchItem"
+              },
+              "authentication": {
+                "type": "Raw",
+                "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+              }
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "Write_audit_receipt": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "runAfter": {
+      "Read_contacts": [
+        "Succeeded"
+      ]
+    },
+    "runtimeConfiguration": {
+      "concurrency": {
+        "repetitions": 1
+      }
+    }
+  }
+}

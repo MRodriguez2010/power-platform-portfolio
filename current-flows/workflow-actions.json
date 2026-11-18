@@ -1,0 +1,667 @@
+{
+  "Existing_intake": {
+    "type": "OpenApiConnection",
+    "runAfter": {},
+    "inputs": {
+      "parameters": {
+        "source": "groups/<SITE_GROUP_ID>",
+        "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+        "file": "requests.xlsx",
+        "table": "CertificationRequests",
+        "dateTimeFormat": "ISO 8601"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "connectionName": "shared_excelonlinebusiness",
+        "operationId": "GetItems"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Input_id_matches": {
+    "type": "Query",
+    "inputs": {
+      "from": "@body('Existing_intake')?['value']",
+      "where": "@equals(item()?['RequestId'],triggerBody()?['newId'])"
+    },
+    "runAfter": {
+      "Existing_intake": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Save_new_request": {
+    "type": "If",
+    "expression": {
+      "and": [
+        {
+          "not": {
+            "equals": [
+              "@trim(coalesce(triggerBody()?['newId'],''))",
+              ""
+            ]
+          }
+        },
+        {
+          "equals": [
+            "@length(body('Input_id_matches'))",
+            0
+          ]
+        }
+      ]
+    },
+    "actions": {
+      "Append_request": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": {
+          "parameters": {
+            "source": "groups/<SITE_GROUP_ID>",
+            "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+            "file": "requests.xlsx",
+            "table": "CertificationRequests",
+            "item/RequestId": "@triggerBody()?['newId']",
+            "item/Revision": 1,
+            "item/Kind": "Workflow",
+            "item/Submitter": "@coalesce(triggerBody()?['submitter'],'')",
+            "item/Division": "@coalesce(triggerBody()?['division'],'')",
+            "item/Department": "@coalesce(triggerBody()?['department'],'')",
+            "item/Description": "@coalesce(triggerBody()?['description'],'')",
+            "item/SelectedTools": "@coalesce(triggerBody()?['selectedTools'],'')",
+            "item/SubmittedDate": "@convertTimeZone(utcNow(),'UTC','Central Standard Time','yyyy-MM-dd')"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+            "connectionName": "shared_excelonlinebusiness",
+            "operationId": "AddRowV2"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          }
+        }
+      },
+      "Wait_for_Excel_visibility": {
+        "type": "Wait",
+        "inputs": {
+          "interval": {
+            "count": 30,
+            "unit": "Second"
+          }
+        },
+        "runAfter": {
+          "Append_request": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "else": {
+      "actions": {}
+    },
+    "runAfter": {
+      "Input_id_matches": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Existing_decisions": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "Save_new_request": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "source": "groups/<SITE_GROUP_ID>",
+        "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+        "file": "decisions.xlsx",
+        "table": "CertifierResponses",
+        "dateTimeFormat": "ISO 8601"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "connectionName": "shared_excelonlinebusiness",
+        "operationId": "GetItems"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Input_decision_matches": {
+    "type": "Query",
+    "inputs": {
+      "from": "@body('Existing_decisions')?['value']",
+      "where": "@and(equals(item()?['RequestId'],triggerBody()?['decisionFor']),equals(string(item()?['Revision']),'1'))"
+    },
+    "runAfter": {
+      "Existing_decisions": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Save_certifier_response": {
+    "type": "If",
+    "expression": {
+      "and": [
+        {
+          "not": {
+            "equals": [
+              "@trim(coalesce(triggerBody()?['decisionFor'],''))",
+              ""
+            ]
+          }
+        },
+        {
+          "equals": [
+            "@length(body('Input_decision_matches'))",
+            0
+          ]
+        },
+        {
+          "equals": [
+            "@contains(createArray('Approve','Deny','Postpone'),coalesce(triggerBody()?['decision'],''))",
+            true
+          ]
+        }
+      ]
+    },
+    "actions": {
+      "Append_decision": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": {
+          "parameters": {
+            "source": "groups/<SITE_GROUP_ID>",
+            "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+            "file": "decisions.xlsx",
+            "table": "CertifierResponses",
+            "item/DecisionId": "@guid()",
+            "item/RequestId": "@triggerBody()?['decisionFor']",
+            "item/Revision": 1,
+            "item/Decision": "@triggerBody()?['decision']",
+            "item/Certifier": "Demo Certifier",
+            "item/Reason": "@coalesce(triggerBody()?['reason'],'')"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+            "connectionName": "shared_excelonlinebusiness",
+            "operationId": "AddRowV2"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          }
+        }
+      },
+      "Wait_for_decision_visibility": {
+        "type": "Wait",
+        "inputs": {
+          "interval": {
+            "count": 30,
+            "unit": "Second"
+          }
+        },
+        "runAfter": {
+          "Append_decision": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "else": {
+      "actions": {}
+    },
+    "runAfter": {
+      "Input_decision_matches": [
+        "Succeeded"
+      ]
+    }
+  },
+  "This_run": {
+    "type": "Compose",
+    "inputs": {
+      "NewRequestId": "@if(and(not(equals(trim(coalesce(triggerBody()?['newId'],'')),'')),equals(length(body('Input_id_matches')),0)),triggerBody()?['newId'],'')",
+      "NewDecisionFor": "@if(and(not(equals(trim(coalesce(triggerBody()?['decisionFor'],'')),'')),equals(length(body('Input_decision_matches')),0),contains(createArray('Approve','Deny','Postpone'),coalesce(triggerBody()?['decision'],''))),triggerBody()?['decisionFor'],'')"
+    },
+    "runAfter": {
+      "Save_certifier_response": [
+        "Succeeded"
+      ]
+    }
+  },
+  "Read_requests": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "This_run": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "source": "groups/<SITE_GROUP_ID>",
+        "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+        "file": "requests.xlsx",
+        "table": "CertificationRequests",
+        "dateTimeFormat": "ISO 8601"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "connectionName": "shared_excelonlinebusiness",
+        "operationId": "GetItems"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Read_decisions": {
+    "type": "OpenApiConnection",
+    "runAfter": {
+      "Read_requests": [
+        "Succeeded"
+      ]
+    },
+    "inputs": {
+      "parameters": {
+        "source": "groups/<SITE_GROUP_ID>",
+        "drive": "<DOCUMENT_LIBRARY_DRIVE_ID>",
+        "file": "decisions.xlsx",
+        "table": "CertifierResponses",
+        "dateTimeFormat": "ISO 8601"
+      },
+      "host": {
+        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "connectionName": "shared_excelonlinebusiness",
+        "operationId": "GetItems"
+      },
+      "authentication": {
+        "type": "Raw",
+        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+      }
+    }
+  },
+  "Requests_of_kind": {
+    "type": "Query",
+    "inputs": {
+      "from": "@body('Read_requests')?['value']",
+      "where": "@equals(item()?['Kind'], 'Workflow')"
+    },
+    "runAfter": {
+      "Read_decisions": [
+        "Succeeded"
+      ]
+    }
+  },
+  "For_each_request": {
+    "type": "Foreach",
+    "foreach": "@body('Requests_of_kind')",
+    "actions": {
+      "Same_revision": {
+        "type": "Query",
+        "inputs": {
+          "from": "@body('Read_requests')?['value']",
+          "where": "@and(equals(item()?['RequestId'],items('For_each_request')?['RequestId']),equals(string(item()?['Revision']),string(items('For_each_request')?['Revision'])))"
+        },
+        "runAfter": {}
+      },
+      "Newer_revision": {
+        "type": "Query",
+        "inputs": {
+          "from": "@body('Read_requests')?['value']",
+          "where": "@and(equals(item()?['RequestId'],items('For_each_request')?['RequestId']),greater(int(item()?['Revision']),int(items('For_each_request')?['Revision'])))"
+        },
+        "runAfter": {
+          "Same_revision": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Matching_decision": {
+        "type": "Query",
+        "inputs": {
+          "from": "@body('Read_decisions')?['value']",
+          "where": "@and(equals(item()?['RequestId'],items('For_each_request')?['RequestId']),equals(string(item()?['Revision']),string(items('For_each_request')?['Revision'])))"
+        },
+        "runAfter": {
+          "Newer_revision": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Qualification": {
+        "type": "Compose",
+        "inputs": "@if(or(empty(trim(string(items('For_each_request')?['RequestId']))),empty(trim(string(items('For_each_request')?['Kind']))),empty(trim(string(items('For_each_request')?['Submitter']))),empty(trim(string(items('For_each_request')?['Division']))),empty(trim(string(items('For_each_request')?['Department']))),empty(trim(string(items('For_each_request')?['Description'])))),'NeedsInformation',if(or(contains(split(coalesce(items('For_each_request')?['SelectedTools'],''),';'),'Demo Local File Tool'),contains(split(coalesce(items('For_each_request')?['SelectedTools'],''),';'),'Demo Unsupported Tool')),'LocalOnly',if(not(contains(createArray('Operations','Analytics'),items('For_each_request')?['Department'])),'NeedsInformation','PendingReview')))",
+        "runAfter": {
+          "Matching_decision": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Final_status": {
+        "type": "Compose",
+        "inputs": "@if(not(equals(length(body('Same_revision')),1)),'DuplicateRevision',if(greater(length(body('Newer_revision')),0),'StaleRevision',if(greater(length(body('Matching_decision')),1),'AmbiguousDecision',if(not(equals(outputs('Qualification'),'PendingReview')),outputs('Qualification'),if(equals(length(body('Matching_decision')),0),'PendingReview',if(equals(first(body('Matching_decision'))?['Decision'],'Approve'),'Approved',if(equals(first(body('Matching_decision'))?['Decision'],'Deny'),'Denied',if(equals(first(body('Matching_decision'))?['Decision'],'Postpone'),'Postponed','NeedsDecisionReview'))))))))",
+        "runAfter": {
+          "Qualification": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Result": {
+        "type": "Compose",
+        "inputs": {
+          "RequestId": "@items('For_each_request')?['RequestId']",
+          "Revision": "@items('For_each_request')?['Revision']",
+          "Kind": "Workflow",
+          "Status": "@outputs('Final_status')",
+          "RecertifyBy": "@if(equals(outputs('Qualification'),'PendingReview'),if(equals(items('For_each_request')?['Department'],'Operations'),concat(formatDateTime(items('For_each_request')?['SubmittedDate'],'yyyy'),'-12-31'),formatDateTime(addToTime(items('For_each_request')?['SubmittedDate'],12,'Month'),'yyyy-MM-dd')),'')",
+          "Route": "Demo Champs and external certifier only when eligible",
+          "Mode": "Synthetic reconstruction; notices emailed to the owner demo inbox only for this run's records"
+        },
+        "runAfter": {
+          "Final_status": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Write_receipt": {
+        "type": "OpenApiConnection",
+        "runAfter": {
+          "Result": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "parameters": {
+            "dataset": "https://contoso.sharepoint.com/sites/PowerPlatformDemo",
+            "folderPath": "/Shared Documents",
+            "name": "@concat('demo-workflow-',items('For_each_request')?['RequestId'],'-r',string(items('For_each_request')?['Revision']),'.json')",
+            "body": "@string(outputs('Result'))"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+            "connectionName": "shared_sharepointonline",
+            "operationId": "CreateFile"
+          },
+          "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+          }
+        }
+      },
+      "Notify_new_request": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "equals": [
+                "@items('For_each_request')?['RequestId']",
+                "@outputs('This_run')?['NewRequestId']"
+              ]
+            },
+            {
+              "not": {
+                "equals": [
+                  "@outputs('This_run')?['NewRequestId']",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        "actions": {
+          "Request_notice": {
+            "type": "Switch",
+            "expression": "@outputs('Final_status')",
+            "cases": {
+              "Case_PendingReview": {
+                "case": "PendingReview",
+                "actions": {
+                  "Email_PendingReview": {
+                    "type": "OpenApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "demo-inbox@example.com",
+                        "emailMessage/Subject": "[DEMO] Certification request @{items('For_each_request')?['RequestId']} - workflow from @{items('For_each_request')?['Submitter']}",
+                        "emailMessage/Body": "<p><i>Intended recipients: the Alteryx Champs team and the external certifier.</i></p><p>A new workflow certification request is ready for review.</p><p><b>Request:</b> @{items('For_each_request')?['RequestId']} (Workflow)<br><b>Developer:</b> @{items('For_each_request')?['Submitter']}<br><b>Division / department:</b> @{items('For_each_request')?['Division']} / @{items('For_each_request')?['Department']}<br><b>Description:</b> @{items('For_each_request')?['Description']}<br><b>Tools declared:</b> @{items('For_each_request')?['SelectedTools']}</p><p>Server check passed: no excluded tools declared. If approved, recertify by @{outputs('Result')?['RecertifyBy']}.</p><p>Next step: the certifier schedules a review meeting with the developer (outside this flow) and records approve, deny or postpone.</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "authentication": {
+                        "type": "Raw",
+                        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                      },
+                      "retryPolicy": {
+                        "type": "none"
+                      }
+                    }
+                  }
+                }
+              },
+              "Case_LocalOnly": {
+                "case": "LocalOnly",
+                "actions": {
+                  "Email_LocalOnly": {
+                    "type": "OpenApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "demo-inbox@example.com",
+                        "emailMessage/Subject": "[DEMO] @{items('For_each_request')?['RequestId']} is not eligible for the server - run locally",
+                        "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_request')?['Submitter']} (developer).</i></p><p>Your workflow declared a tool that cannot run on the shared server, so it was not sent for server certification. It can continue to run locally.</p><p><b>Request:</b> @{items('For_each_request')?['RequestId']} (Workflow)<br><b>Developer:</b> @{items('For_each_request')?['Submitter']}<br><b>Division / department:</b> @{items('For_each_request')?['Division']} / @{items('For_each_request')?['Department']}<br><b>Description:</b> @{items('For_each_request')?['Description']}<br><b>Tools declared:</b> @{items('For_each_request')?['SelectedTools']}</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "authentication": {
+                        "type": "Raw",
+                        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                      },
+                      "retryPolicy": {
+                        "type": "none"
+                      }
+                    }
+                  }
+                }
+              },
+              "Case_NeedsInformation": {
+                "case": "NeedsInformation",
+                "actions": {
+                  "Email_NeedsInformation": {
+                    "type": "OpenApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "demo-inbox@example.com",
+                        "emailMessage/Subject": "[DEMO] @{items('For_each_request')?['RequestId']} needs more information before review",
+                        "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_request')?['Submitter']} (developer).</i></p><p>Your request is missing a required field or uses a department without a recertification rule. Please update it and resubmit.</p><p><b>Request:</b> @{items('For_each_request')?['RequestId']} (Workflow)<br><b>Developer:</b> @{items('For_each_request')?['Submitter']}<br><b>Division / department:</b> @{items('For_each_request')?['Division']} / @{items('For_each_request')?['Department']}<br><b>Description:</b> @{items('For_each_request')?['Description']}<br><b>Tools declared:</b> @{items('For_each_request')?['SelectedTools']}</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "authentication": {
+                        "type": "Raw",
+                        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                      },
+                      "retryPolicy": {
+                        "type": "none"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "default": {
+              "actions": {}
+            },
+            "runAfter": {}
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "Write_receipt": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Notify_new_decision": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "equals": [
+                "@items('For_each_request')?['RequestId']",
+                "@outputs('This_run')?['NewDecisionFor']"
+              ]
+            },
+            {
+              "not": {
+                "equals": [
+                  "@outputs('This_run')?['NewDecisionFor']",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        "actions": {
+          "Outcome_notice": {
+            "type": "Switch",
+            "expression": "@outputs('Final_status')",
+            "cases": {
+              "Case_Approved": {
+                "case": "Approved",
+                "actions": {
+                  "Email_Approved": {
+                    "type": "OpenApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "demo-inbox@example.com",
+                        "emailMessage/Subject": "[DEMO] @{items('For_each_request')?['RequestId']} certification approved",
+                        "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_request')?['Submitter']} (developer).</i></p><p>Approved. Recertify by @{outputs('Result')?['RecertifyBy']}.</p><p><b>Request:</b> @{items('For_each_request')?['RequestId']} (Workflow)<br><b>Developer:</b> @{items('For_each_request')?['Submitter']}<br><b>Division / department:</b> @{items('For_each_request')?['Division']} / @{items('For_each_request')?['Department']}<br><b>Description:</b> @{items('For_each_request')?['Description']}<br><b>Tools declared:</b> @{items('For_each_request')?['SelectedTools']}</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "authentication": {
+                        "type": "Raw",
+                        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                      },
+                      "retryPolicy": {
+                        "type": "none"
+                      }
+                    }
+                  }
+                }
+              },
+              "Case_Denied": {
+                "case": "Denied",
+                "actions": {
+                  "Email_Denied": {
+                    "type": "OpenApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "demo-inbox@example.com",
+                        "emailMessage/Subject": "[DEMO] @{items('For_each_request')?['RequestId']} certification denied",
+                        "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_request')?['Submitter']} (developer).</i></p><p>Denied by the certifier. Reason: @{first(body('Matching_decision'))?['Reason']}</p><p><b>Request:</b> @{items('For_each_request')?['RequestId']} (Workflow)<br><b>Developer:</b> @{items('For_each_request')?['Submitter']}<br><b>Division / department:</b> @{items('For_each_request')?['Division']} / @{items('For_each_request')?['Department']}<br><b>Description:</b> @{items('For_each_request')?['Description']}<br><b>Tools declared:</b> @{items('For_each_request')?['SelectedTools']}</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "authentication": {
+                        "type": "Raw",
+                        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                      },
+                      "retryPolicy": {
+                        "type": "none"
+                      }
+                    }
+                  }
+                }
+              },
+              "Case_Postponed": {
+                "case": "Postponed",
+                "actions": {
+                  "Email_Postponed": {
+                    "type": "OpenApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "demo-inbox@example.com",
+                        "emailMessage/Subject": "[DEMO] @{items('For_each_request')?['RequestId']} certification postponed",
+                        "emailMessage/Body": "<p><i>Intended recipient: @{items('For_each_request')?['Submitter']} (developer).</i></p><p>Postponed by the certifier. Reason: @{first(body('Matching_decision'))?['Reason']}</p><p><b>Request:</b> @{items('For_each_request')?['RequestId']} (Workflow)<br><b>Developer:</b> @{items('For_each_request')?['Submitter']}<br><b>Division / department:</b> @{items('For_each_request')?['Division']} / @{items('For_each_request')?['Department']}<br><b>Description:</b> @{items('For_each_request')?['Description']}<br><b>Tools declared:</b> @{items('For_each_request')?['SelectedTools']}</p><p style=\"color:#666;font-size:12px\">Synthetic interview demonstration. All demo email is redirected to one owner test inbox. No real employee, customer or employer data.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "authentication": {
+                        "type": "Raw",
+                        "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                      },
+                      "retryPolicy": {
+                        "type": "none"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "default": {
+              "actions": {}
+            },
+            "runAfter": {}
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "Notify_new_request": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "runAfter": {
+      "Requests_of_kind": [
+        "Succeeded"
+      ]
+    },
+    "runtimeConfiguration": {
+      "concurrency": {
+        "repetitions": 1
+      }
+    }
+  }
+}
